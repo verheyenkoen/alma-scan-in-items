@@ -1,8 +1,11 @@
+#!/usr/bin/env bun
 import * as p from "@clack/prompts";
 import { AlmaClient, type CircDesk, type Library } from "./alma.ts";
 
 const DEFAULT_LIBRARY = "CA20";
 const DEFAULT_CIRC_DESK = "DEFAULT_CIRC_DESK";
+
+await loadEnvFromScriptDir();
 
 let alma: AlmaClient;
 try {
@@ -10,6 +13,28 @@ try {
 } catch (e) {
   console.error((e as Error).message);
   process.exit(1);
+}
+
+async function loadEnvFromScriptDir() {
+  const file = Bun.file(`${import.meta.dir}/.env`);
+  if (!(await file.exists())) return;
+  const text = await file.text();
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (!value) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
 }
 
 async function main() {

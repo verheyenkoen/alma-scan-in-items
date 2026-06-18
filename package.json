@@ -1,8 +1,11 @@
 {
-  "name": "scan-in-items",
+  "name": "alma-scan-in-items",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "alma-scan-in-items": "./index.ts"
+  },
   "scripts": {
     "start": "bun run index.ts"
   },

@@ -38,7 +38,17 @@ export class AlmaClient {
       },
     });
     const text = await res.text();
-    const body = text ? JSON.parse(text) : ({} as unknown);
+    let body: unknown = {};
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        const snippet = text.slice(0, 200).replace(/\s+/g, " ").trim();
+        throw new Error(
+          `Non-JSON response from Alma (HTTP ${res.status}): ${snippet}`,
+        );
+      }
+    }
     if (!res.ok) {
       const err = body as {
         errorList?: {
