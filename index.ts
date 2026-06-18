@@ -1,86 +1,15 @@
 import * as p from "@clack/prompts";
+import { AlmaClient, type CircDesk, type Library } from "./alma.ts";
 
-const API_KEY = process.env.ALMA_API_KEY;
-const API_HOST =
-  process.env.ALMA_API_HOST ?? "https://api-eu.hosted.exlibrisgroup.com";
 const DEFAULT_LIBRARY = "CA20";
 const DEFAULT_CIRC_DESK = "DEFAULT_CIRC_DESK";
 
-if (!API_KEY) {
-  console.error("Missing ALMA_API_KEY in environment.");
+let alma: AlmaClient;
+try {
+  alma = AlmaClient.fromEnv();
+} catch (e) {
+  console.error((e as Error).message);
   process.exit(1);
-}
-
-type Library = { code: string; name: string };
-type CircDesk = { code: string; name: string };
-
-async function alma<T>(
-  path: string,
-  init: RequestInit & { query?: Record<string, string> } = {},
-): Promise<T> {
-  const url = new URL(`${API_HOST}/almaws/v1${path}`);
-  for (const [k, v] of Object.entries(init.query ?? {})) {
-    url.searchParams.set(k, v);
-  }
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `apikey ${API_KEY}`,
-      Accept: "application/json",
-      ...(init.headers ?? {}),
-    },
-  });
-  const text = await res.text();
-  const body = text ? JSON.parse(text) : ({} as unknown);
-  if (!res.ok) {
-    const err = body as {
-      errorList?: { error?: Array<{ errorMessage?: string; errorCode?: string }> };
-      errorMessage?: string;
-    };
-    const first = err?.errorList?.error?.[0];
-    const message =
-      first?.errorMessage ||
-      err?.errorMessage ||
-      `HTTP ${res.status} ${res.statusText}`;
-    const code = first?.errorCode ? ` [${first.errorCode}]` : "";
-    throw new Error(`${message}${code}`);
-  }
-  return body as T;
-}
-
-async function fetchLibraries(): Promise<Library[]> {
-  const data = await alma<{ library?: Library[] }>("/conf/libraries");
-  return (data.library ?? []).map((l) => ({ code: l.code, name: l.name }));
-}
-
-async function fetchCircDesks(libraryCode: string): Promise<CircDesk[]> {
-  const data = await alma<{ circ_desk?: CircDesk[] }>(
-    `/conf/libraries/${encodeURIComponent(libraryCode)}/circ-desks`,
-  );
-  return (data.circ_desk ?? []).map((d) => ({ code: d.code, name: d.name }));
-}
-
-async function scanIn(
-  barcode: string,
-  library: string,
-  circDesk: string,
-): Promise<{ title?: string; barcode?: string }> {
-  return alma<{ bib_data?: { title?: string }; item_data?: { barcode?: string } }>(
-    `/items`,
-    {
-      method: "POST",
-      query: {
-        item_barcode: barcode,
-        op: "scan",
-        library,
-        circ_desk: circDesk,
-        auto_print_slip: "false",
-      },
-    },
-  ).then((res) => ({
-    title: res.bib_data?.title,
-    barcode: res.item_data?.barcode,
-  }));
 }
 
 function parseBarcodes(input: string): string[] {
@@ -97,7 +26,7 @@ async function main() {
   libSpinner.start("Fetching libraries…");
   let libraries: Library[];
   try {
-    libraries = await fetchLibraries();
+    libraries = await alma.listLibraries();
   } catch (e) {
     libSpinner.stop("Failed to fetch libraries");
     p.cancel((e as Error).message);
@@ -123,7 +52,7 @@ async function main() {
   deskSpinner.start("Fetching circulation desks…");
   let desks: CircDesk[];
   try {
-    desks = await fetchCircDesks(library as string);
+    desks = await alma.listCircDesks(library as string);
   } catch (e) {
     deskSpinner.stop("Failed to fetch circulation desks");
     p.cancel((e as Error).message);
@@ -170,7 +99,11 @@ async function main() {
   let failed = 0;
   for (const barcode of barcodes) {
     try {
-      const result = await scanIn(barcode, library as string, circDesk as string);
+      const result = await alma.scanIn(
+        barcode,
+        library as string,
+        circDesk as string,
+      );
       const title = result.title ?? "(no title)";
       p.log.success(`${barcode} — ${title}`);
       ok++;
