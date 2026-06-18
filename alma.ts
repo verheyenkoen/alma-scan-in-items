@@ -1,6 +1,6 @@
 export type Library = { code: string; name: string };
 export type CircDesk = { code: string; name: string };
-export type ScanInResult = { title?: string; barcode?: string };
+export type ScanInResult = { mmsId: string; title?: string; barcode: string };
 
 const DEFAULT_HOST = "https://api-eu.hosted.exlibrisgroup.com";
 
@@ -74,22 +74,45 @@ export class AlmaClient {
     library: string,
     circDesk: string,
   ): Promise<ScanInResult> {
-    const res = await this.request<{
-      bib_data?: { title?: string };
-      item_data?: { barcode?: string };
-    }>(`/items`, {
-      method: "POST",
-      query: {
-        item_barcode: barcode,
-        op: "scan",
-        library,
-        circ_desk: circDesk,
-        auto_print_slip: "false",
-      },
+    const item_data = await this.request<ItemData>(`/items`, {
+      query: { item_barcode: barcode },
     });
+
+    const { mms_id } = item_data.bib_data;
+    const { holding_id } = item_data.holding_data;
+    const { pid } = item_data.item_data;
+    const res = await this.request<ItemData>(
+      `/bibs/${mms_id}/holdings/${holding_id}/items/${pid}`,
+      {
+        method: "POST",
+        query: {
+          op: "scan",
+          library,
+          circ_desk: circDesk,
+          auto_print_slip: "false",
+          register_in_house_use: "false",
+        },
+      },
+    );
+
     return {
-      title: res.bib_data?.title,
-      barcode: res.item_data?.barcode,
+      mmsId: res.bib_data.mms_id,
+      title: res.bib_data.title,
+      barcode: res.item_data.barcode,
     };
   }
 }
+
+type ItemData = {
+  bib_data: {
+    mms_id: string;
+    title: string;
+  };
+  holding_data: {
+    holding_id: string;
+  };
+  item_data: {
+    pid: string;
+    barcode: string;
+  };
+};

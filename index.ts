@@ -82,10 +82,10 @@ async function scanInBarcodes(
     try {
       const result = await alma.scanIn(barcode, library, circDesk);
       const title = result.title ?? "(no title)";
-      p.log.success(`${barcode} — ${title}`);
+      p.log.success(`${barcode} - ${title}`);
       ok++;
     } catch (e) {
-      p.log.error(`${barcode} — ${(e as Error).message}`);
+      p.log.error(`${barcode} - ${(e as Error).message}`);
       failed++;
     }
   }
