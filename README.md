@@ -1,11 +1,15 @@
 # scan-in-items
 
-Interactive CLI that performs Alma **scan-in** on a list of barcodes.
+Interactive CLI that performs Alma **scan-in** on a list of barcodes or on the
+members of an Alma set of physical items.
 
 1. Pick a library (defaults to **Book Tower / CA20**)
 2. Pick a circulation desk
-3. Paste barcodes (one per line, or whitespace/comma separated)
-4. Each barcode is sent to `POST /almaws/v1/items?op=scan`
+3. Choose the source of the items:
+   - **Paste barcodes** (one per line, or whitespace/comma separated), or
+   - **Pick an Alma set** of physical items (itemized or logical); its members
+     are fetched and confirmed before scanning
+4. Each item is sent to `POST /almaws/v1/bibs/.../items/{pid}?op=scan`
 
 ## Setup
 

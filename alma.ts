@@ -2,6 +2,28 @@ export type Library = { code: string; name: string };
 export type CircDesk = { code: string; name: string };
 export type ScanInResult = { mmsId: string; title?: string; barcode: string };
 
+export type AlmaSet = {
+  id: string;
+  name: string;
+  description?: string;
+  type: { value: string; desc?: string };
+  content: { value: string; desc?: string };
+  created_date?: string;
+  number_of_members?: { value?: number | string; link?: string };
+};
+
+export type SetMember = {
+  id: string;
+  description?: string;
+  link?: string;
+};
+
+export type AlmaItem = {
+  bib_data: { mms_id: string; title?: string };
+  holding_data: { holding_id: string };
+  item_data: { pid: string; barcode?: string };
+};
+
 const DEFAULT_HOST = "https://api-eu.hosted.exlibrisgroup.com";
 
 export class AlmaClient {
@@ -22,10 +44,12 @@ export class AlmaClient {
   }
 
   private async request<T>(
-    path: string,
+    pathOrUrl: string,
     init: RequestInit & { query?: Record<string, string> } = {},
   ): Promise<T> {
-    const url = new URL(`${this.host}/almaws/v1${path}`);
+    const url = pathOrUrl.startsWith("http")
+      ? new URL(pathOrUrl)
+      : new URL(`${this.host}/almaws/v1${pathOrUrl}`);
     for (const [k, v] of Object.entries(init.query ?? {})) {
       url.searchParams.set(k, v);
     }
@@ -79,20 +103,81 @@ export class AlmaClient {
     return (data.circ_desk ?? []).map((d) => ({ code: d.code, name: d.name }));
   }
 
+  /** All sets whose content is physical items (itemized and logical). */
+  async listItemSets(): Promise<AlmaSet[]> {
+    const limit = 100;
+    const all: AlmaSet[] = [];
+    for (let offset = 0; ; offset += limit) {
+      const data = await this.request<{
+        total_record_count?: number;
+        set?: AlmaSet[];
+      }>("/conf/sets", {
+        query: {
+          content_type: "ITEM",
+          limit: String(limit),
+          offset: String(offset),
+        },
+      });
+      const page = data.set ?? [];
+      all.push(...page);
+      const total = data.total_record_count ?? all.length;
+      if (page.length === 0 || all.length >= total) break;
+    }
+    return all;
+  }
+
+  /** Full set details; unlike the list response this includes number_of_members. */
+  async getSet(setId: string): Promise<AlmaSet> {
+    return this.request<AlmaSet>(`/conf/sets/${encodeURIComponent(setId)}`);
+  }
+
+  async listSetMembers(
+    setId: string,
+    onProgress?: (fetched: number, total: number) => void,
+  ): Promise<SetMember[]> {
+    const limit = 100;
+    const all: SetMember[] = [];
+    for (let offset = 0; ; offset += limit) {
+      const data = await this.request<{
+        total_record_count?: number;
+        member?: SetMember[];
+      }>(`/conf/sets/${encodeURIComponent(setId)}/members`, {
+        query: { limit: String(limit), offset: String(offset) },
+      });
+      const page = data.member ?? [];
+      all.push(...page);
+      const total = data.total_record_count ?? all.length;
+      onProgress?.(all.length, total);
+      if (page.length === 0 || all.length >= total) break;
+    }
+    return all;
+  }
+
+  async getItem(link: string): Promise<AlmaItem> {
+    return this.request<AlmaItem>(link);
+  }
+
   async scanIn(
     barcode: string,
     library: string,
     circDesk: string,
   ): Promise<ScanInResult> {
-    const item_data = await this.request<ItemData>(`/items`, {
+    const item = await this.request<AlmaItem>(`/items`, {
       query: { item_barcode: barcode },
     });
+    return this.scanInItem(item, library, circDesk);
+  }
 
-    const { mms_id } = item_data.bib_data;
-    const { holding_id } = item_data.holding_data;
-    const { pid } = item_data.item_data;
-    const res = await this.request<ItemData>(
-      `/bibs/${mms_id}/holdings/${holding_id}/items/${pid}`,
+  async scanInItem(
+    item: AlmaItem,
+    library: string,
+    circDesk: string,
+  ): Promise<ScanInResult> {
+    const { mms_id } = item.bib_data;
+    const { holding_id } = item.holding_data;
+    const { pid } = item.item_data;
+    const res = await this.request<AlmaItem>(
+      `/bibs/${encodeURIComponent(mms_id)}/holdings/${encodeURIComponent(holding_id)}/items/${encodeURIComponent(pid)}`,
       {
         method: "POST",
         query: {
@@ -108,21 +193,7 @@ export class AlmaClient {
     return {
       mmsId: res.bib_data.mms_id,
       title: res.bib_data.title,
-      barcode: res.item_data.barcode,
+      barcode: res.item_data.barcode ?? "",
     };
   }
 }
-
-type ItemData = {
-  bib_data: {
-    mms_id: string;
-    title: string;
-  };
-  holding_data: {
-    holding_id: string;
-  };
-  item_data: {
-    pid: string;
-    barcode: string;
-  };
-};
