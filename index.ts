@@ -87,10 +87,10 @@ async function determineSource(): Promise<"barcodes" | "set"> {
 }
 
 async function determineLibrary(): Promise<string> {
-  const libraries = await loadWithSpinner(
-    "libraries",
-    () => alma.listLibraries(),
+  const libraries = await loadWithSpinner("libraries", () =>
+    alma.listLibraries(),
   );
+
   return promptSelect({
     message: "Select a library",
     items: libraries,
