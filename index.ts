@@ -95,6 +95,7 @@ async function determineLibrary(): Promise<string> {
     message: "Select a library",
     items: libraries,
     defaultCode: DEFAULT_LIBRARY,
+    search: true,
   });
 }
 
@@ -322,8 +323,9 @@ async function promptSelect(opts: {
   message: string;
   items: Array<Library | CircDesk>;
   defaultCode: string;
+  search?: boolean;
 }): Promise<string> {
-  const { items, defaultCode, message } = opts;
+  const { items, defaultCode, message, search } = opts;
   const fallback = items[0];
   if (!fallback) {
     p.cancel("Nothing to select.");
@@ -331,14 +333,17 @@ async function promptSelect(opts: {
   }
   const initial = items.find((i) => i.code === defaultCode) ?? fallback;
 
-  const selected = await p.select({
+  const promptOptions = {
     message,
     initialValue: initial.code,
     options: items.map((i) => ({
       value: i.code,
       label: `${i.name} (${i.code})`,
     })),
-  });
+  };
+  const selected = search
+    ? await p.autocomplete(promptOptions)
+    : await p.select(promptOptions);
   if (p.isCancel(selected)) {
     p.cancel("Cancelled");
     process.exit(0);
